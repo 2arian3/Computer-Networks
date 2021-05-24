@@ -1,8 +1,22 @@
 import sys
+import os
+import tqdm
 import select
 import socket
 
 CHUNK_SIZE = 1024
+
+
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    END = '\033[0m'
+    UNDERLINE = '\033[4m'
+
 
 class Client:
     def __init__(self, host, port):
@@ -16,7 +30,7 @@ class Client:
             sock.connect((self.host, self.port))
             self.sock = sock
         except:
-            raise ConnectionError('Cannot connect to {} on port {}'.format(self.host, self.port)) from None 
+            raise ConnectionError(f'{Colors.FAIL}Cannot connect to {self.host} on port {self.port}') from None 
 
     def close(self):
         if self.sock:
@@ -64,8 +78,36 @@ def find_open_ports(host, r):
     return open_ports
 
 def main():
-    client = Client('www.google.com', 80)
+    '''
+    Checking arguments
+    '''
+    if len(sys.argv) < 3:
+        print(f'{Colors.FAIL}Invalid input...')
+        return
+    if not sys.argv[2].isdigit():
+        print(f'{Colors.FAIL}Port shall be a number...')
+        return
     
+    client = Client(sys.argv[1], int(sys.argv[2]))
+    try:
+        client.connect()
+        print(f'{Colors.CYAN}Connected to {sys.argv[1]} on port {sys.argv[2]}')
+    except Exception as e:
+        print(e)  
+    
+    while True:
+        msg = ''
+        while (next := input()) != 'send':
+            msg += next + '\r\n'
+        if msg.strip() == 'quit':
+            break    
+        client.sendall(msg)
+        response = client.recvall()
+        if response:
+            print(f'{Colors.BLUE}{response.decode()}{Colors.CYAN}')
+
+
+      
     
     
 if __name__ == '__main__':
