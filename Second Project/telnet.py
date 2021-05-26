@@ -1,11 +1,13 @@
 import os
 import sys
 import ssl
+import time
 import select
 import socket
 import threading
 
-MESSAGE_SIZE = 128
+CHUNK_SIZE = 1024
+FILE_NAME_LENGTH = 256
 
 class Colors:
     HEADER = '\033[95m'
@@ -37,13 +39,13 @@ def open_ports(host, r):
 
 class Peer:
 
-    class Client:
+    class Client(threading.Thread):
         def __init__(self, host, port):
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.host = host
             self.port = port
         
-        def connect(self):
+        def run(self):
             try:
                 self.sock.connect((self.host, self.port))
                 print(f'{Colors.CYAN}Connected to {self.host} on port {self.port}')
@@ -55,24 +57,24 @@ class Peer:
     
     class Server(threading.Thread):
         def __init__(self, host):
-            import random
             threading.Thread.__init__(self)
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.host = host
-            self.port = random.randrange(53000, 53500)
 
         def run(self):
-            try:
-                self.sock.bind((self.host, self.port))
-                self.sock.listen()
-                print(f'{Colors.CYAN}Server is listening to port {self.port}')
-            except:
-                raise ConnectionError(f'{Colors.FAIL}Cannot bind to port {self.port}') from None 
+            import random
+            self.port = random.randrange(10000, 55000)
             while True:
-                # TODO
-                sock, address = self.sock.accept()
-                print(f'{Colors.WARNING}{address[0]} connected...')
-                threading.Thread(target=handle, args=(sock, address)).start()
+                try:
+                    self.sock.bind(('', self.port))
+                    self.sock.listen()
+                    print(f'{Colors.CYAN}Server is listening to port {self.port}')
+                    break
+                except:
+                    self.port = random.randrange(10000, 55000)
+
+            sock, address = self.sock.accept()
+            print(f'{Colors.WARNING}{address} connected...')
+            
 
         def close(self):
             self.sock.close()
@@ -81,43 +83,45 @@ class Peer:
         self.server = self.Server(host)
         self.client = self.Client(host, port)
 
-        self.server.start()
-        #self.client.connect()  
+        self.server.start() 
 
 
 def sendall(sock, message):
-    if type(message) == str:
-        message = message.encode()
+    sock.sendall(message)
 
-    message_length = str(len(message)).encode()
-    message_length += b' ' * (MESSAGE_SIZE - len(message_length))
-
-    sock.send(message_length)       
-    sock.send(message)
-
-def readfile(filename):
+def sendfile(sock, filename):
     with open(filename, 'rb') as f:
-        return f.read()
+        data = f.read()
+
+        print(filename.encode() + b' ' * (FILE_NAME_LENGTH - len(filename)))
+        sendall(sock, filename.encode() + b' ' * (FILE_NAME_LENGTH - len(filename)))
+        sendall(sock, data)
 
 def recvall(sock):
-    message_length = int(sock.recv(MESSAGE_SIZE).decode().strip())
-    return sock.recv(message_length)
+    chunks = bytearray()
+    while True:
+        readable = select.select([sock], [], [], 1)
+        if readable[0]:
+            chunks.extend(sock.recv(CHUNK_SIZE))
+        else:
+            break
+    return chunks    
 
-def handle(sock, address):
-    while (message := recvall(sock).decode()) != 'Quit':
-        print(f'{Colors.BLUE}Got \'{message}\' from client')
-        sendall(sock, input('\nMessage> '))
+def recvfile(sock):
+    filename = sock.recv(FILE_NAME_LENGTH).decode().strip()
+    data = recvall(sock)
+    with open('Downloaded ' + filename, 'wb') as f:
+        f.write(data)
 
 def main():
-    try:
-        peer = Peer(host=sys.argv[1], port=int(sys.argv[2]))
-    except Exception as e:
-        print(e)
-        return
     
-    port = int(input('Host port> '))
+    peer = Peer(host=sys.argv[1], port=int(sys.argv[2]))
+
+    time.sleep(0.5)
+    port = int(input(f'{Colors.GREEN}Host port> '))
+    
     peer.client.port = port
-    peer.client.connect()
+    peer.client.start()
 
     while True:
         msg = ''
@@ -125,9 +129,9 @@ def main():
             msg += next + '\n'
         if msg.strip() == 'quit':
             break    
-        sendall(peer.client.sock, msg)
+        sendall(peer.client.sock, msg.encode())
         # TODO
-        response = recvall()
+        response = recvall(peer.client.sock)
         if response:
             print(f'{Colors.BLUE}***Response***\n{response.decode()}{Colors.CYAN}')
 
