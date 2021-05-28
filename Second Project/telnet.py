@@ -6,6 +6,7 @@ import enum
 import select
 import socket
 import threading
+import mysql.connector
 
 CHUNK_SIZE = 1024
 FILE_NAME_LENGTH = 256
@@ -40,6 +41,31 @@ def open_ports(hosts=['aut.ac.ir'], r=(80, 90)):
                 open_ports[host].append(port) 
              
     return open_ports
+
+def connect_to_db():
+    mydb = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="aa12345678",
+        database="Telnet",
+        port="3306"
+    )
+    return mydb
+
+def insert_into_db(db, command, host, port, result):
+    cursor = db.cursor()
+    sql = 'INSERT INTO history (command, host, port, result) VALUES (%s, %s, %s, %s)'
+    cursor.execute(sql, (command, host, port, result))
+    db.commit()
+
+def see_history(db, host, port):
+    cursor = db.cursor()
+    sql = 'SELECT command, result FROM history WHERE host = %s AND port = %s'
+    cursor.execute(sql, (host, port,))
+    results = cursor.fetchall()
+
+    for i in range(len(results)):
+        print(f'{Colors.FAIL}[{i+1}] {Colors.CYAN}Command: {results[i][0]}\tResult: {results[i][1]}')
 
 class Peer:
 
@@ -99,8 +125,8 @@ class Peer:
     class Server(threading.Thread):
         def __init__(self, key_file, certificate_file):
             threading.Thread.__init__(self)
+            self._db = connect_to_db()
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.history = []
             self.key_file = key_file
             self.certificate_file = certificate_file
 
@@ -144,7 +170,8 @@ class Peer:
                                 tls.sendall(' '.join(command[3:]).encode())
                                 response = tls.recv(CHUNK_SIZE).decode()
                                 print(f'{Colors.WARNING}response> {Colors.BLUE}{response}')
-                        self.history.append(' '.join(command))
+                        insert_into_db(self._db, ' '.join(command), 'localhost', self.port, response)
+                        
                     
                     elif len(command) > 2 and command[1] == 'send':
                         sendall(sock, str(FUNCTIONS.SEND.value).encode())
@@ -152,7 +179,8 @@ class Peer:
                         time.sleep(0.5)
                         response = recvall(sock).decode()
                         print(f'\n{Colors.WARNING}reponse>{Colors.BLUE} {response}')
-                        self.history.append(' '.join(command))
+                        insert_into_db(self._db, ' '.join(command), 'localhost', self.port, response)
+
 
                     elif len(command) > 2 and command[1] == 'upload':
                         path = command[2].split('/')
@@ -167,7 +195,7 @@ class Peer:
                             time.sleep(0.5)
                             response = recvall(sock).decode()
                             print(f'\n{Colors.WARNING}response>{Colors.BLUE} {response}') 
-                            self.history.append(' '.join(command))
+                            insert_into_db(self._db, ' '.join(command), 'localhost', self.port, response)
                         except:
                             print(f'\n{Colors.FAIL}INVALID PATH...') 
 
@@ -177,11 +205,10 @@ class Peer:
                         time.sleep(0.5)
                         response = recvall(sock).decode()
                         print(f'\n{Colors.WARNING}response>{Colors.BLUE} {response}')
-                        self.history.append(' '.join(command))
+                        insert_into_db(self._db, ' '.join(command), 'localhost', self.port, response)
 
                     elif command[1] == 'history':
-                        for i in range(len(self.history)):
-                            print(f'{Colors.FAIL}[{i}] {Colors.CYAN}{self.history[i]}')
+                        see_history(self.db, 'localhost', self.port)
 
         def close(self):
             self.sock.close()
@@ -223,9 +250,26 @@ def recvfile(sock):
     return 'Downloaded ' + filename    
 
 def main():
+    if len(sys.argv) < 4:
+        print(f'{Colors.FAIL}NOT ENOUGH ARGUMENTS...\npython3 telnet.py host key_file cert_file')
+        return
+
+    try:
+        with open(sys.argv[2], 'rb') as f:
+            pass
+    except:
+        print(f'{Colors.FAIL}File {sys.argv[2]} does not exist...')
+        return
+
+    try:
+        with open(sys.argv[3], 'rb') as f:
+            pass
+    except:
+        print(f'{Colors.FAIL}File {sys.argv[3]} does not exist...')
+        return
 
     host = sys.argv[1]
-    key_file, certificate_file = map(str, input(f'{Colors.WARNING}Please enter key file and certificate file names...{Colors.BLUE}').split())
+    key_file, certificate_file = sys.argv[2], sys.argv[3]
     peer = Peer(key_file, certificate_file, host)
     peer.server.start()
 
