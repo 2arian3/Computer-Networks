@@ -2,70 +2,8 @@ import os
 import sys
 import ssl
 import time
-import enum
-import select
-import socket
 import threading
-import mysql.connector
-
-CHUNK_SIZE = 1024
-FILE_NAME_LENGTH = 256
-FUNCTIONS = enum.Enum('FUNCTIONS', 'SEND SENDENC UPLOAD EXEC HIST')
-
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    END = '\033[0m'
-    UNDERLINE = '\033[4m'
-
-def port_is_open(host, port):
-    with socket.socket() as sock:
-        sock.settimeout(1)
-        try:
-            sock.connect((host, port))
-            return True
-        except:
-            return False 
-
-def open_ports(hosts=['aut.ac.ir'], r=(80, 90)):
-    open_ports = {}
-    start, end = r
-    for host in hosts:
-        open_ports[host] = []
-        for port in range(start, end):
-            if port_is_open(host, port):
-                open_ports[host].append(port) 
-             
-    return open_ports
-
-def connect_to_db():
-    mydb = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="aa12345678",
-        database="Telnet",
-        port="3306"
-    )
-    return mydb
-
-def insert_into_db(db, command, host, port, result):
-    cursor = db.cursor()
-    sql = 'INSERT INTO history (command, host, port, result) VALUES (%s, %s, %s, %s)'
-    cursor.execute(sql, (command, host, port, result))
-    db.commit()
-
-def see_history(db, host, port):
-    cursor = db.cursor()
-    sql = 'SELECT command, result FROM history WHERE host = %s AND port = %s'
-    cursor.execute(sql, (host, port,))
-    results = cursor.fetchall()
-
-    for i in range(len(results)):
-        print(f'{Colors.FAIL}[{i+1}] {Colors.CYAN}Command: {results[i][0]}\tResult: {results[i][1]}')
+from utils import *
 
 class Peer:
 
@@ -81,7 +19,6 @@ class Peer:
         def run(self):
             try:
                 self.sock.connect((self.host, self.port))
-                print(f'\n{Colors.CYAN}Connected to {self.host} on port {self.port}')
             except:
                 raise ConnectionError(f'\n{Colors.FAIL}Cannot connect to {self.host} on port {self.port}') from None
 
@@ -105,7 +42,7 @@ class Peer:
                         with context.wrap_socket(server, server_side=True) as tls:
                             sock, _ = tls.accept()
                             msg = sock.recv(CHUNK_SIZE).decode()
-                            print(f'{Colors.WARNING}message> {Colors.BLUE}{msg}')
+                            print(f'\n{Colors.WARNING}message> {Colors.BLUE}{msg}')
                             sock.sendall(b'Got your encrypted message...')
 
                 elif command == 'UPLOAD':
@@ -117,34 +54,32 @@ class Peer:
                     cmd = recvall(self.sock).decode()
                     sendall(self.sock, os.popen(cmd).read().encode())
                     print(f'\n{Colors.WARNING}executed>{Colors.BLUE} {cmd}')
+
+                print(f'\n{Colors.WARNING}telnet>{Colors.BLUE} ', end='')
                 
 
         def close(self):
             self.sock.close() 
     
     class Server(threading.Thread):
-        def __init__(self, key_file, certificate_file):
+        def __init__(self, server_port):
             threading.Thread.__init__(self)
             self._db = connect_to_db()
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.key_file = key_file
-            self.certificate_file = certificate_file
+            self.port = server_port
 
         def run(self):
-            import random
-            self.port = random.randrange(10000, 55000)
             while True:
                 try:
-                    self.sock.bind(('', self.port))
+                    self.sock.bind(('', int(self.port)))
                     self.sock.listen()
                     print(f'\n{Colors.CYAN}Server is listening to port {self.port}')
                     break
                 except:
-                    self.port = random.randrange(10000, 55000)
-
-            sock, address = self.sock.accept()
-            print(f'\n{Colors.WARNING}{address} connected...')
-
+                    self.port = input(f'\n{Colors.FAIL}Server cannot bind to port {self.port}...\nEnter another port>')
+                
+            
+            sock, _ = self.sock.accept()
             running = True
             while running:
                 command = input(f'\n{Colors.WARNING}telnet>{Colors.BLUE} ').split()
@@ -169,7 +104,7 @@ class Peer:
                             with context.wrap_socket(client, server_hostname=server_hostname) as tls:
                                 tls.sendall(' '.join(command[3:]).encode())
                                 response = tls.recv(CHUNK_SIZE).decode()
-                                print(f'{Colors.WARNING}response> {Colors.BLUE}{response}')
+                                print(f'\n{Colors.WARNING}response> {Colors.BLUE}{response}')
                         insert_into_db(self._db, ' '.join(command), 'localhost', self.port, response)
                         
                     
@@ -208,57 +143,18 @@ class Peer:
                         insert_into_db(self._db, ' '.join(command), 'localhost', self.port, response)
 
                     elif command[1] == 'history':
-                        see_history(self.db, 'localhost', self.port)
+                        see_history(self._db, 'localhost', self.port)
 
         def close(self):
             self.sock.close()
 
-    def __init__(self, key_file, certificate_file, host):
-        self.server = self.Server(key_file, certificate_file)
-        self.client = self.Client(host, key_file, certificate_file)
-
-
-def sendall(sock, message):
-    sock.sendall(message)
-
-def sendfile(sock, filename):
-    with open(filename, 'rb') as f:
-        data = f.read()
-
-        sendall(sock, filename.encode() + b' ' * (FILE_NAME_LENGTH - len(filename)))
-        sendall(sock, data)
-
-def recvall(sock):
-    chunks = bytearray()
-    while True:
-        readable = select.select([sock], [], [], 1)
-        if readable[0]:
-            chunks.extend(sock.recv(CHUNK_SIZE))
-        else:
-            break
-    return chunks    
-
-def recvfile(sock):
-    '''
-    First things first recieve the file name.
-    Then just recieve the file chunks one by one and write it into a file. 
-    '''
-    filename = sock.recv(FILE_NAME_LENGTH).decode().strip()
-    data = recvall(sock)
-    with open('Downloaded ' + filename, 'wb') as f:
-        f.write(data)
-    return 'Downloaded ' + filename    
+    def __init__(self, key_file, certificate_file, host, server_port):
+        self.server = self.Server(server_port)
+        self.client = self.Client(host, key_file, certificate_file)    
 
 def main():
-    if len(sys.argv) < 4:
-        print(f'{Colors.FAIL}NOT ENOUGH ARGUMENTS...\npython3 telnet.py host key_file cert_file')
-        return
-
-    try:
-        with open(sys.argv[2], 'rb') as f:
-            pass
-    except:
-        print(f'{Colors.FAIL}File {sys.argv[2]} does not exist...')
+    if len(sys.argv) < 5:
+        print(f'{Colors.FAIL}NOT ENOUGH ARGUMENTS...\npython3 telnet.py host server_port key_file cert_file')
         return
 
     try:
@@ -268,9 +164,20 @@ def main():
         print(f'{Colors.FAIL}File {sys.argv[3]} does not exist...')
         return
 
-    host = sys.argv[1]
-    key_file, certificate_file = sys.argv[2], sys.argv[3]
-    peer = Peer(key_file, certificate_file, host)
+    try:
+        with open(sys.argv[4], 'rb') as f:
+            pass
+    except:
+        print(f'{Colors.FAIL}File {sys.argv[4]} does not exist...')
+        return
+    
+    if not sys.argv[2].isdigit():
+        print(f'{Colors.FAIL}INVALID PORT NUMBER...')
+        return
+
+    host, server_port = sys.argv[1], int(sys.argv[2])
+    key_file, certificate_file = sys.argv[3], sys.argv[4]
+    peer = Peer(key_file, certificate_file, host, server_port)
     peer.server.start()
 
     time.sleep(0.5)
