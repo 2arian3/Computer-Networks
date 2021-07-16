@@ -72,9 +72,9 @@ def connect_to_db():
     mydb = mysql.connector.connect(
         host='localhost',
         user='root',
-        password='********',
+        password='aa12345678',
         database='Telnet',
-        port='****'
+        port='3306'
     )
     return mydb
 
