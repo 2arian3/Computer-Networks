@@ -6,7 +6,7 @@ import signal
 import time
 import sys
 
-MAC_ADDRESS  = 'fe:0a:be:ef:1b:a0'
+MAC_ADDRESS  = 'fe:1a:b2:ef:1b:a0'
 CLIENT_PORT  = 68
 GOT_IP       = False
 CLIENT_IP    = ''
@@ -58,7 +58,7 @@ while True:
         offer, _ = client_socket.recvfrom(MAX_MSG_SIZE)
         offer = dhcppython.packet.DHCPPacket.from_bytes(offer)
 
-        if offer.xid == discover.xid and offer.options.by_code(53) == b'\x01':
+        if offer.xid == discover.xid and offer.options.by_code(53).data == b'\x02':
             request = dhcppython.packet.DHCPPacket(
                 op=discover.op,
                 htype=discover.htype,
@@ -85,15 +85,15 @@ while True:
 
             ack, _ = client_socket.recvfrom(MAX_MSG_SIZE)
             ack = dhcppython.packet.DHCPPacket.from_bytes(ack)
-
-            if ack.xid == ack.xid and ack.options.by_code(53) == b'\x05':
+            if ack.xid == discover.xid and ack.options.by_code(53).data == b'\x05':
                 GOT_IP = True
                 CLIENT_IP = ack.yiaddr
-                LEASE_TIME = ack.options.by_code(51)
+                LEASE_TIME = ack.options.by_code(51).value['lease_time']
 
             print(f'Got ip address {CLIENT_IP} from server with ip address {ack.siaddr} for {LEASE_TIME} secs...')
+            break
 
     except Exception as e:
         print(e)
         time_out_interval = discover_timeout(time_out_interval)
-        signal.alarm(time_out_interval)
+        signal.alarm(int(time_out_interval))
