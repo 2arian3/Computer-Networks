@@ -3,15 +3,19 @@ import socket
 import dhcppython
 import ipaddress
 import signal
-import time
-import sys
+import json
 
-MAC_ADDRESS = 'fe:0a:be:ef:1b:a0'
-CLIENT_PORT = 68
-GOT_IP = False
-CLIENT_IP = ''
-LEASE_TIME = 0
-MAX_MSG_SIZE = 1024
+with open('random_clients.json') as json_file:
+    clients = json.load(json_file)
+
+MAC_ADDRESS   = random.choice(list(clients['mac_to_name'].keys()))
+COMPUTER_NAME = clients['mac_to_name'][MAC_ADDRESS]
+SERVER_PORT   = 67
+CLIENT_PORT   = 68
+GOT_IP        = False
+CLIENT_IP     = ''
+LEASE_TIME    = 0
+MAX_MSG_SIZE  = 1024
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
@@ -34,7 +38,7 @@ discover = dhcppython.packet.DHCPPacket(
     sname=b'',
     file=b'',
     options=dhcppython.options.OptionList([
-        dhcppython.options.options.short_value_to_object(12, 'iPhone 12'),
+        dhcppython.options.options.short_value_to_object(12, COMPUTER_NAME),
         dhcppython.options.options.short_value_to_object(53, 'DHCPDISCOVER')
     ])
 )
@@ -55,10 +59,11 @@ timeout_interval = 10
 signal.signal(signal.SIGALRM, alarm)
 signal.alarm(timeout_interval)
 
+print(f'Client with mac address {MAC_ADDRESS} is looking for ip')
 while not GOT_IP:
     try:
         print('Sent discover message...')
-        client_socket.sendto(discover.asbytes, ('<broadcast>', 67))
+        client_socket.sendto(discover.asbytes, ('<broadcast>', SERVER_PORT))
 
         offer, _ = client_socket.recvfrom(MAX_MSG_SIZE)
         offer = dhcppython.packet.DHCPPacket.from_bytes(offer)
@@ -84,14 +89,14 @@ while not GOT_IP:
             file=b'',
             options=dhcppython.options.OptionList(
                 [
-                    dhcppython.options.options.short_value_to_object(12, 'iPhone 12'),
+                    dhcppython.options.options.short_value_to_object(12, COMPUTER_NAME),
                     dhcppython.options.options.short_value_to_object(53, 'DHCPREQUEST'),
                     dhcppython.options.options.short_value_to_object(50, offer.yiaddr),
                     dhcppython.options.options.short_value_to_object(54, offer.siaddr)
                 ])
         )
         print('Sent request message...')
-        client_socket.sendto(request.asbytes, ('<broadcast>', 67))
+        client_socket.sendto(request.asbytes, ('<broadcast>', SERVER_PORT))
 
         ack, _ = client_socket.recvfrom(MAX_MSG_SIZE)
         ack = dhcppython.packet.DHCPPacket.from_bytes(ack)

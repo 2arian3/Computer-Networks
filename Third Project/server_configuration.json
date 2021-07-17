@@ -9,10 +9,14 @@
     "ip_block": "192.168.1.0",
     "subnet_mask": "255.255.255.224"
   },
-  "lease_time": 10,
+  "lease_time": 100,
   "reservation_list": {
-    "fe:0a:be:ef:1b:a0": "192.168.1.10",
-    "mac2": "ip2"
+    "fb:16:3a:ef:12:a0": "192.168.1.9",
+    "fb:ad:aa:b1:ac:30": "192.168.1.30"
   },
-  "black_list": ["mac1", "mac2"]
+  "black_list": [
+    "fc:03:be:ef:1b:a0",
+    "fb:10:0a:ef:1b:a0",
+    "fc:fd:ab:3c:6b:1c"
+  ]
 }
