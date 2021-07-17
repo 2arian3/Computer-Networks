@@ -1,0 +1,15 @@
+{
+  "mac_to_name": {
+    "fc:03:be:ef:1b:a0": "iPhone 12 Pro",
+    "fc:12:ae:ef:9b:ad": "iPhone 12 Pro Max",
+    "fb:10:0a:ef:1b:a0": "Samsung S20",
+    "fb:16:3a:ef:12:a0": "Samsung S20 Ultra",
+    "fc:11:bc:ec:6b:1c": "Macbook Pro 16",
+    "fc:10:bb:ec:6b:1c": "Macbook Pro 13",
+    "fc:fd:ab:3c:6b:1c": "iMac Pro",
+    "fb:cd:ab:1c:3b:12": "Dell XPS 15",
+    "fb:cd:ab:1c:0b:13": "Dell XPS 13",
+    "fb:cd:a0:bc:0b:43": "Asus Zenbook Pro",
+    "fb:ad:aa:b1:ac:30": "Lenovo Thinkpad"
+  }
+}
